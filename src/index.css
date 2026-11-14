@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+/* Design tokens — Tailwind v4 reads these straight from CSS (no config file) */
+@theme {
+  --font-display: "Unbounded", sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --color-ink: #0e0f11;
+  --color-mist: #d9dcdf;
+  --color-graphite: #26292d;
+  --color-coal: #1d1f22;
+  --color-ember: #0b0606;
+  --color-navy: #081630;
+}
+
+html {
+  background: var(--color-mist);
+}
+
+/* Intro: the site waits below the screen on black until the chain yanks it up */
+html.intro-pending {
+  background: #000;
+}
+html.intro-pending [data-intro-lift] {
+  transform: translate3d(0, 100vh, 0);
+}
+/* the hero headline stays hidden until the intro hands over, then slides in */
+html.intro-pending .reveal-after-intro {
+  visibility: hidden;
+}
+
+/* ---------- Chrome sweep on hover (project cards) ---------- */
+.chrome-sweep {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.chrome-sweep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 32%,
+    rgba(255, 255, 255, 0.05) 40%,
+    rgba(255, 255, 255, 0.3) 48%,
+    rgba(255, 215, 215, 0.14) 53%,
+    transparent 62%
+  );
+  transform: translateX(-120%);
+}
+.chrome-sweep:hover::after {
+  transform: translateX(120%);
+  transition: transform 0.95s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* ---------- Chrome text ---------- */
+.chrome-text,
+.chrome-red,
+.chrome-cyan {
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.chrome-text {
+  background-image: linear-gradient(180deg, #fff 0%, #c9d1d8 28%, #5d666e 50%, #e9eef2 62%, #8b949c 80%, #fff 100%);
+}
+.chrome-red {
+  background-image: linear-gradient(180deg, #fff1f1 0%, #ff9a9a 30%, #7a1d1d 52%, #ffc4c4 66%, #b23a3a 84%, #fff1f1 100%);
+}
+.chrome-cyan {
+  background-image: linear-gradient(180deg, #f0fdff 0%, #9eeeff 30%, #14596b 52%, #c8f6ff 66%, #3fb4cf 84%, #f0fdff 100%);
+}
+
+.btn-chrome {
+  background: linear-gradient(180deg, #fff, #b9c2ca 48%, #7e8891 52%, #e3e8ec);
+}
+
+/* ---------- Placeholder chain links (replaced by the 3D chain later) ---------- */
+.ring-dark   { background: radial-gradient(closest-side, transparent 58%, #0d0e10 61%, #5a6168 67%, #f2f4f6 73%, #2b2f33 80%, #9aa2a9 87%, #111316 94%, transparent 100%); }
+.ring-silver { background: radial-gradient(closest-side, transparent 58%, #202326 61%, #9aa2a9 67%, #fff 73%, #4a5056 80%, #d5dade 87%, #1a1c1f 94%, transparent 100%); }
+.ring-cyan   { background: radial-gradient(closest-side, transparent 58%, #04161c 61%, #3fc6e6 67%, #effcff 73%, #0e4555 80%, #8fe9ff 87%, #031013 94%, transparent 100%); }
+.edge-dark   { background: linear-gradient(90deg, #0d0e10, #f2f4f6 45%, #5a6168 70%, #0d0e10); }
+.edge-silver { background: linear-gradient(90deg, #202326, #fff 45%, #9aa2a9 70%, #202326); }
+.edge-cyan   { background: linear-gradient(90deg, #04161c, #effcff 45%, #3fc6e6 70%, #04161c); }
