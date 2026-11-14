@@ -5,6 +5,13 @@ import Reveal from './Reveal'
 const TOPICS = ['Website', 'iOS app', 'AI assistant', 'Something else']
 const EMAIL = 'ozteknikerarda@gmail.com'
 
+// Social links (any with an empty url are hidden)
+const SOCIALS = [
+  { label: 'GitHub', url: 'https://github.com/Oztekniker' },
+  { label: 'LinkedIn', url: 'https://www.linkedin.com/in/ardaoztekniker/' },
+  { label: 'Instagram', url: 'https://www.instagram.com/arda.oztekniker/' },
+]
+
 // EmailJS keys live in .env.local (never committed). See README → Contact form.
 const SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID
 const TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID
@@ -85,10 +92,17 @@ export default function Contact() {
                   {EMAIL}
                 </a>
                 <div className="flex flex-wrap gap-1 font-mono text-[13px] text-[#aeb6bd]">
-                  {/* TODO: real links once the accounts exist */}
-                  <a href="#contact" className="py-3 pr-2.5">GitHub</a>
-                  <a href="#contact" className="px-2.5 py-3">LinkedIn</a>
-                  <a href="#contact" className="px-2.5 py-3">Instagram</a>
+                  {SOCIALS.filter((l) => l.url).map((l, i) => (
+                    <a
+                      key={l.label}
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`${i === 0 ? 'pr-2.5' : 'px-2.5'} py-3 transition-colors hover:text-white`}
+                    >
+                      {l.label}
+                    </a>
+                  ))}
                 </div>
               </div>
             </div>
