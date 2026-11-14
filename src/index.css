@@ -14,8 +14,10 @@
   --color-navy: #081630;
 }
 
+/* --page-bg follows the section on screen (Backdrop.jsx), so the areas behind the phone's
+   status bar and browser toolbar match the page instead of showing a grey strip */
 html {
-  background: var(--color-mist);
+  background: var(--page-bg, var(--color-mist));
 }
 
 /* Intro: the site waits below the screen on black until the chain yanks it up */

@@ -1,4 +1,7 @@
-import { ReactLenis } from 'lenis/react'
+import { useEffect } from 'react'
+import { ReactLenis, useLenis } from 'lenis/react'
+import gsap from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import Intro from './components/Intro'
 import ChainScene from './components/ChainScene'
 import Backdrop from './components/Backdrop'
@@ -17,10 +20,34 @@ import Contact from './components/Contact'
 //
 // Elements marked data-intro-lift start pushed below the screen and get pulled up by the intro.
 
+// One clock for everything that moves with the scroll.
+// Every frame GSAP's ticker first advances the smooth scroll (Lenis), then everything else
+// (the 3D chain, scroll triggers) reads the new position in that same frame. Without this,
+// Lenis and the chain ran on separate loops and the chain trailed the page on fast scrolls.
+function ScrollClock() {
+  const lenis = useLenis()
+  useEffect(() => {
+    if (!lenis) return
+    const tick = (time) => lenis.raf(time * 1000)
+    gsap.ticker.add(tick, false, true) // prioritized: runs before the chain renders
+    gsap.ticker.lagSmoothing(0)
+    lenis.on('scroll', ScrollTrigger.update)
+    return () => {
+      gsap.ticker.remove(tick)
+      lenis.off('scroll', ScrollTrigger.update)
+    }
+  }, [lenis])
+  return null
+}
+
 export default function App() {
   return (
     // anchors: links like href="#work" glide to their section instead of jumping
-    <ReactLenis root options={{ anchors: { duration: 1.6, easing: (t) => 1 - Math.pow(1 - t, 4) } }}>
+    <ReactLenis
+      root
+      options={{ autoRaf: false, syncTouch: true, anchors: { duration: 1.6, easing: (t) => 1 - Math.pow(1 - t, 4) } }}
+    >
+      <ScrollClock />
       <Intro />
       <Backdrop />
       <ChainScene />

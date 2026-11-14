@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Environment, Lightformer } from '@react-three/drei'
 import * as THREE from 'three'
+import gsap from 'gsap'
 
 // One InstancedMesh = the whole chain in a single draw call.
 //
@@ -11,12 +12,24 @@ import * as THREE from 'three'
 // Work → across to the right at the bottom of Work (behind the cards) → down the right of About →
 // into the centre, ending exactly on #chain-anchor at the top of the contact form.
 // Every second link is turned 90° around the tangent so neighbours interlock.
+//
+// Performance:
+// - the curve is sampled once into a lookup table; each frame only reads and blends from it
+// - links outside the screen are skipped
+// - section colours are measured once per layout, not every frame
+// - phones get a lighter mesh, lower resolution and no antialiasing
+// - the canvas is sized to the tallest mobile viewport so the URL bar showing/hiding
+//   never resizes it or forces the route to be rebuilt mid-scroll
+
+const LITE =
+  typeof window !== 'undefined' && (window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 768)
 
 const R = 0.16 // torus radius
 const TUBE = 0.045 // wire thickness (radius)
 const STRETCH = 1.6 // makes the ring an oval link
 // distance between link centres when the chain is pulled taut (wires just touching inside)
 const PITCH = 2 * R * STRETCH - 2 * TUBE
+const STEP = PITCH / 8 // lookup table resolution along the curve
 
 // Per-section look. Sections set data-chain-tone="dark|white|red|cyan".
 const TONES = {
@@ -26,27 +39,20 @@ const TONES = {
   cyan: { tint: '#c8f6ff', light: '#50dcff' },
 }
 
-function currentTone() {
-  const mid = window.innerHeight / 2
-  for (const el of document.querySelectorAll('[data-chain-tone]')) {
-    const r = el.getBoundingClientRect()
-    if (r.top <= mid && r.bottom >= mid) return TONES[el.dataset.chainTone] ?? TONES.white
-  }
-  return TONES.white
+// Layout position on the page, ignoring CSS transforms. The intro slides the whole site up
+// with a transform; measuring with getBoundingClientRect would bake that offset into the route.
+function pageBox(el) {
+  let top = 0
+  for (let n = el; n; n = n.offsetParent) top += n.offsetTop
+  return { top, h: el.offsetHeight }
 }
 
 // Page-space route in pixels: [x, y, depth]. x/y are measured on the page, depth is in world units.
 function buildPoints() {
   const vw = window.innerWidth
-  // Layout position on the page, ignoring CSS transforms. The intro slides the whole site up
-  // with a transform; measuring with getBoundingClientRect would bake that offset into the route
-  // and the chain would jump when the intro ends.
   const box = (sel) => {
     const el = document.querySelector(sel)
-    if (!el) return null
-    let top = 0
-    for (let n = el; n; n = n.offsetParent) top += n.offsetTop
-    return { top, h: el.offsetHeight }
+    return el ? pageBox(el) : null
   }
   const hero = box('#top')
   const work = box('#work')
@@ -71,10 +77,17 @@ function buildPoints() {
   ]
 }
 
+function measureTones() {
+  return [...document.querySelectorAll('[data-chain-tone]')].map((el) => {
+    const b = pageBox(el)
+    return { top: b.top, bottom: b.top + b.h, tone: TONES[el.dataset.chainTone] ?? TONES.white }
+  })
+}
+
 const UP = new THREE.Vector3(0, 1, 0)
 const QUARTER = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI / 2)
 const ONE = new THREE.Vector3(1, 1, 1)
-const ZERO = new THREE.Vector3(0, 0, 0)
+const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0)
 
 function Chain() {
   const group = useRef()
@@ -82,35 +95,67 @@ function Chain() {
   const material = useRef()
   const glow = useRef()
   const scroll = useRef({ last: window.scrollY, velocity: 0 })
-  const { viewport } = useThree()
+  const tones = useRef([])
+  const { viewport, size } = useThree()
+  const getState = useThree((s) => s.get)
   const [path, setPath] = useState(null)
 
+  // Render on GSAP's ticker, right after the smooth scroll has moved (see ScrollClock in App.jsx),
+  // so the chain and the page always draw the same scroll position in the same frame.
+  useEffect(() => {
+    const render = (time) => getState().advance(time)
+    gsap.ticker.add(render)
+    return () => gsap.ticker.remove(render)
+  }, [getState])
+
   const geometry = useMemo(() => {
-    const g = new THREE.TorusGeometry(R, TUBE, 20, 48)
+    const g = LITE ? new THREE.TorusGeometry(R, TUBE, 10, 24) : new THREE.TorusGeometry(R, TUBE, 20, 48)
     g.scale(1, STRETCH, 1)
     return g
   }, [])
 
-  // Rebuild the route whenever the page layout changes (resize, fonts loading, content changes)
+  // Rebuild the route only when the layout really changes: a new width, or the page getting
+  // taller/shorter (fonts loading, content). Height-only resizes (mobile URL bar) are ignored.
   useEffect(() => {
     let frame = 0
+    let lastW = -1
+    let lastDocH = -1
     const build = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
+        const w = window.innerWidth
+        const docH = document.documentElement.scrollHeight
+        if (w === lastW && Math.abs(docH - lastDocH) < 2) return
         const pts = buildPoints()
         if (!pts) return
-        const upp = viewport.height / window.innerHeight // world units per pixel
-        const vw = window.innerWidth
+        lastW = w
+        lastDocH = docH
+
+        const upp = viewport.height / size.height // world units per pixel
         const curve = new THREE.CatmullRomCurve3(
-          pts.map(([x, y, z]) => new THREE.Vector3((x - vw / 2) * upp, -y * upp, z)),
+          pts.map(([x, y, z]) => new THREE.Vector3((x - w / 2) * upp, -y * upp, z)),
           false,
           'centripetal',
         )
         curve.arcLengthDivisions = 2000
         const length = curve.getLength()
+
+        // lookup table: positions and tangents every STEP along the curve
+        const n = Math.ceil(length / STEP) + 1
+        const pos = new Float32Array(n * 3)
+        const tan = new Float32Array(n * 3)
+        const p = new THREE.Vector3()
+        const t = new THREE.Vector3()
+        for (let k = 0; k < n; k++) {
+          const u = Math.min(1, (k * STEP) / length)
+          curve.getPointAt(u, p).toArray(pos, k * 3)
+          curve.getTangentAt(u, t).toArray(tan, k * 3)
+        }
+
         let count = Math.ceil(length / PITCH) + 2
         if (count % 2) count += 1
-        setPath({ curve, length, count, upp })
+        tones.current = measureTones()
+        setPath({ length, count, upp, n, pos, tan })
       })
     }
     build()
@@ -123,7 +168,7 @@ function Chain() {
       window.removeEventListener('resize', build)
       cancelAnimationFrame(frame)
     }
-  }, [viewport.height])
+  }, [viewport.height, size.height])
 
   const tmp = useMemo(
     () => ({
@@ -139,8 +184,8 @@ function Chain() {
 
   useFrame((state, delta) => {
     if (!path || !mesh.current) return
-    const { curve, length, count, upp } = path
-    const vh = window.innerHeight
+    const { length, count, upp, n, pos, tan } = path
+    const H = size.height
 
     const y = window.scrollY
     const s = scroll.current
@@ -148,7 +193,9 @@ function Chain() {
     s.last = y
 
     // move the whole chain with the page
-    group.current.position.y = (vh / 2 + y) * upp
+    const groupY = (H / 2 + y) * upp
+    group.current.position.y = groupY
+    const half = viewport.height / 2 + 0.8 // anything further than this from centre is off-screen
 
     // links creep slowly toward the form as you scroll, like the chain is being pulled in
     const slide = (y * upp * 0.15) % (2 * PITCH)
@@ -158,13 +205,31 @@ function Chain() {
     for (let i = 0; i < count; i++) {
       const d = i * PITCH + slide - 2 * PITCH
       if (d < 0 || d > length) {
-        tmp.m.compose(ZERO, tmp.q.identity(), ZERO) // hidden
-        mesh.current.setMatrixAt(i, tmp.m)
+        mesh.current.setMatrixAt(i, HIDDEN)
         continue
       }
-      const t = d / length
-      curve.getPointAt(t, tmp.p)
-      curve.getTangentAt(t, tmp.tan)
+      // blend between the two nearest lookup-table samples
+      const f = d / STEP
+      const k = Math.min(n - 1, Math.floor(f))
+      const k2 = Math.min(n - 1, k + 1)
+      const a = f - k
+      tmp.p.set(
+        pos[k * 3] + (pos[k2 * 3] - pos[k * 3]) * a,
+        pos[k * 3 + 1] + (pos[k2 * 3 + 1] - pos[k * 3 + 1]) * a,
+        pos[k * 3 + 2] + (pos[k2 * 3 + 2] - pos[k * 3 + 2]) * a,
+      )
+      if (Math.abs(tmp.p.y + groupY) > half) {
+        mesh.current.setMatrixAt(i, HIDDEN)
+        continue
+      }
+      tmp.tan
+        .set(
+          tan[k * 3] + (tan[k2 * 3] - tan[k * 3]) * a,
+          tan[k * 3 + 1] + (tan[k2 * 3 + 1] - tan[k * 3 + 1]) * a,
+          tan[k * 3 + 2] + (tan[k2 * 3 + 2] - tan[k * 3 + 2]) * a,
+        )
+        .normalize()
+
       // a little life: lags on fast scrolls, breathes at rest; pinned at both ends
       const pin = Math.min(1, d / 2, (length - d) / 2)
       tmp.p.x += pin * (sway * Math.sin(d * 0.5) + Math.sin(time * 0.8 + d * 0.6) * 0.025)
@@ -176,11 +241,13 @@ function Chain() {
     }
     mesh.current.instanceMatrix.needsUpdate = true
 
-    // ease colours toward the section under the middle of the screen
-    const tone = currentTone()
-    const k = 1 - Math.exp(-delta * 4)
-    material.current.color.lerp(tmp.tint.set(tone.tint), k)
-    glow.current.color.lerp(tmp.light.set(tone.light), k)
+    // ease colours toward the section under the middle of the screen (measured once per layout)
+    const mid = y + window.innerHeight / 2
+    const hit = tones.current.find((t) => mid >= t.top && mid <= t.bottom)
+    const tone = hit ? hit.tone : TONES.white
+    const ease = 1 - Math.exp(-delta * 4)
+    material.current.color.lerp(tmp.tint.set(tone.tint), ease)
+    glow.current.color.lerp(tmp.light.set(tone.light), ease)
   })
 
   return (
@@ -199,17 +266,19 @@ function Chain() {
 
 export default function ChainScene() {
   return (
-    <div data-intro-lift aria-hidden="true" className="pointer-events-none fixed inset-0 z-[25]">
+    // h-lvh: as tall as the largest mobile viewport, so the URL bar never resizes the canvas
+    <div data-intro-lift aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-[25] h-lvh">
       <Canvas
+        frameloop="never" // driven by GSAP's ticker, in step with the scroll
         camera={{ position: [0, 0, 10], fov: 35 }}
-        dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true }}
+        dpr={LITE ? [1, 1.5] : [1, 2]}
+        gl={{ antialias: !LITE, alpha: true, powerPreference: 'high-performance' }}
         style={{ pointerEvents: 'none' }} // the overlay must never block clicks or hovers underneath
       >
         <ambientLight intensity={0.25} />
         <directionalLight position={[3, 5, 6]} intensity={1.2} />
         {/* Studio light panels built in code: chrome needs something to reflect, and no HDR download */}
-        <Environment resolution={256}>
+        <Environment resolution={LITE ? 64 : 256}>
           <Lightformer form="rect" intensity={4} position={[0, 5, -6]} scale={[12, 2, 1]} />
           <Lightformer form="rect" intensity={2} position={[-6, 0, 0]} rotation-y={Math.PI / 2} scale={[12, 1.5, 1]} />
           <Lightformer form="rect" intensity={2} position={[6, 0, 0]} rotation-y={-Math.PI / 2} scale={[12, 1.5, 1]} />

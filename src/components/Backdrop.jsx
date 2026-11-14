@@ -22,6 +22,7 @@ export default function Backdrop() {
         const { bg, glow } = el.dataset
         const ease = { duration: 0.9, ease: 'power2.out', overwrite: 'auto' }
         gsap.to(base, { backgroundColor: bg, ...ease })
+        gsap.to(document.documentElement, { '--page-bg': bg, ...ease })
         gsap.to(red, { opacity: glow === 'red' ? 1 : 0, ...ease })
         gsap.to(blue, { opacity: glow === 'blue' ? 1 : 0, ...ease })
       }
@@ -39,7 +40,7 @@ export default function Backdrop() {
   )
 
   return (
-    <div ref={root} data-intro-lift aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10">
+    <div ref={root} data-intro-lift aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-lvh">
       <div className="bd-base absolute inset-0" style={{ backgroundColor: '#d9dcdf' }} />
       {/* red spotlight from below (Work) */}
       <div

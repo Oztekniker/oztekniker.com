@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Environment, Lightformer } from '@react-three/drei'
 import * as THREE from 'three'
@@ -145,9 +145,21 @@ function SpikeBall({ hovered, pulse }) {
   )
 }
 
+const LITE =
+  typeof window !== 'undefined' && (window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 768)
+
 export default function ChromeSphere() {
   const [hovered, setHovered] = useState(false)
+  const [visible, setVisible] = useState(true)
   const pulse = useRef(0)
+  const box = useRef(null)
+
+  // stop rendering entirely while the ball is scrolled out of view
+  useEffect(() => {
+    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { rootMargin: '100px' })
+    io.observe(box.current)
+    return () => io.disconnect()
+  }, [])
 
   // Camera just far enough back that fully extended spikes stay inside the canvas
   const fov = 35
@@ -155,16 +167,22 @@ export default function ChromeSphere() {
 
   return (
     <div
+      ref={box}
       className="aspect-square w-full max-w-[600px] cursor-pointer"
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       onClick={() => (pulse.current = 1)}
       aria-hidden="true"
     >
-      <Canvas camera={{ position: [0, 0, distance], fov }} dpr={[1, 2]} gl={{ antialias: true, alpha: true }}>
+      <Canvas
+        frameloop={visible ? 'always' : 'never'}
+        camera={{ position: [0, 0, distance], fov }}
+        dpr={LITE ? [1, 1.5] : [1, 2]}
+        gl={{ antialias: !LITE, alpha: true }}
+      >
         <ambientLight intensity={0.2} />
         <directionalLight position={[3, 4, 5]} intensity={1.4} />
-        <Environment resolution={256}>
+        <Environment resolution={LITE ? 64 : 256}>
           <Lightformer form="rect" intensity={5} position={[0, 5, -5]} scale={[10, 2, 1]} />
           <Lightformer form="rect" intensity={2.5} position={[-5, 0, 0]} rotation-y={Math.PI / 2} scale={[10, 1.2, 1]} />
           <Lightformer form="rect" intensity={2.5} position={[5, 0, 0]} rotation-y={-Math.PI / 2} scale={[10, 1.2, 1]} />

@@ -55,7 +55,7 @@ export default function Hero() {
 
       <div className="relative z-20 flex flex-wrap items-center gap-8 pb-4 px-[max(24px,14vw)] pt-6">
         <div className="flex min-w-0 flex-[1_1_440px] flex-col gap-6">
-          <p className="font-mono text-[13px] text-[#4f555b]">// portfolio · vol. 02</p>
+          <p className="font-mono text-[13px] text-[#4f555b]">// portfolio · vol. 02 · Cyprus</p>
           <Reveal as="h1" afterIntro className="reveal-after-intro font-display text-[clamp(36px,4.6vw,64px)] font-bold leading-[1.02] tracking-[-0.02em]">
             BUILT BY HAND.
             <br />
@@ -73,7 +73,8 @@ export default function Hero() {
             </a>
           </div>
         </div>
-        <div className="flex min-w-0 flex-[1.2_1_420px] justify-center">
+        {/* z-30 puts the ball in front of the chain overlay, so the chain passes behind it */}
+        <div className="relative z-30 flex min-w-0 flex-[1.2_1_420px] justify-center">
           <ChromeSphere />
         </div>
       </div>
