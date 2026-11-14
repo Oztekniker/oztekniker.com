@@ -1,8 +1,21 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import emailjs from '@emailjs/browser'
 import Reveal from './Reveal'
 
 const TOPICS = ['Website', 'iOS app', 'AI assistant', 'Something else']
 const EMAIL = 'ozteknikerarda@gmail.com'
+
+// EmailJS keys live in .env.local (never committed). See README → Contact form.
+const SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID
+const TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID
+const PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY
+
+const BUTTON_LABEL = {
+  idle: 'Send message',
+  sending: 'Sending…',
+  sent: 'Message sent',
+  error: 'Try again',
+}
 
 const fieldLabel = 'flex flex-col gap-1.5 font-mono text-xs tracking-[0.06em] text-[#9aa2a9]'
 const fieldInput =
@@ -10,10 +23,27 @@ const fieldInput =
 
 export default function Contact() {
   const [topic, setTopic] = useState('Website')
+  const [status, setStatus] = useState('idle') // idle | sending | sent | error
+  const form = useRef(null)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    // TODO: send with EmailJS (@emailjs/browser is already installed)
+    if (status === 'sending') return
+    // honeypot: real people never see or fill this field, bots usually do
+    if (form.current.company.value) return
+
+    setStatus('sending')
+    try {
+      if (!SERVICE_ID || !TEMPLATE_ID || !PUBLIC_KEY) throw new Error('EmailJS keys missing in .env.local')
+      await emailjs.sendForm(SERVICE_ID, TEMPLATE_ID, form.current, { publicKey: PUBLIC_KEY })
+      setStatus('sent')
+      form.current.reset()
+      setTopic('Website')
+      setTimeout(() => setStatus('idle'), 6000)
+    } catch (err) {
+      console.error('Contact form:', err)
+      setStatus('error')
+    }
   }
 
   return (
@@ -29,6 +59,7 @@ export default function Contact() {
           style={{ background: 'linear-gradient(160deg, #fff 0%, #6b737a 22%, #2a2d31 45%, #9aa2a9 70%, #1e2023 100%)' }}
         >
           <form
+            ref={form}
             onSubmit={handleSubmit}
             className="flex flex-wrap gap-12 rounded-[27px] p-[clamp(24px,4vw,48px)] text-left"
             style={{
@@ -63,6 +94,17 @@ export default function Contact() {
             </div>
 
             <div className="flex min-w-0 flex-[1.4_1_380px] flex-col gap-5.5">
+              {/* sent along with the form */}
+              <input type="hidden" name="topic" value={topic} />
+              <input
+                type="text"
+                name="company"
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                className="absolute -left-[9999px] h-px w-px opacity-0"
+              />
+
               <fieldset className="flex flex-col gap-3">
                 <legend className="mb-3 text-sm text-[#c3cad0]">What are we building?</legend>
                 <div className="flex flex-wrap gap-2">
@@ -102,18 +144,41 @@ export default function Contact() {
                 <textarea name="message" required placeholder="Tell me about your idea" className={`${fieldInput} min-h-30 resize-y py-3`} />
               </label>
 
-              <button
-                type="submit"
-                className="btn-chrome inline-flex min-h-14 cursor-pointer items-center gap-3 self-start rounded-full pl-7 pr-2.5 font-semibold text-[#0b0d0f]"
-              >
-                Send message
-                <span className="inline-flex size-[38px] items-center justify-center rounded-full bg-ink text-[#f2f4f6]">
-                  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12h14" />
-                    <path d="m13 6 6 6-6 6" />
-                  </svg>
-                </span>
-              </button>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+                <button
+                  type="submit"
+                  disabled={status === 'sending'}
+                  className="btn-chrome inline-flex min-h-14 cursor-pointer items-center gap-3 rounded-full pl-7 pr-2.5 font-semibold text-[#0b0d0f] disabled:cursor-wait disabled:opacity-70"
+                >
+                  {BUTTON_LABEL[status]}
+                  <span className="inline-flex size-[38px] items-center justify-center rounded-full bg-ink text-[#f2f4f6]">
+                    {status === 'sending' ? (
+                      <span className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    ) : status === 'sent' ? (
+                      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m5 12 5 5 9-10" />
+                      </svg>
+                    ) : (
+                      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14" />
+                        <path d="m13 6 6 6-6 6" />
+                      </svg>
+                    )}
+                  </span>
+                </button>
+                <p role="status" aria-live="polite" className="text-sm text-[#aeb6bd]">
+                  {status === 'sent' && "Thanks! I'll get back to you soon."}
+                  {status === 'error' && (
+                    <>
+                      Something went wrong. You can also email{' '}
+                      <a href={`mailto:${EMAIL}`} className="text-white underline underline-offset-4">
+                        {EMAIL}
+                      </a>
+                      .
+                    </>
+                  )}
+                </p>
+              </div>
             </div>
           </form>
         </div>
