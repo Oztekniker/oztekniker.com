@@ -24,7 +24,7 @@ export default function About() {
             {stack.map((s) => (
               <li
                 key={s}
-                className="rounded-full border border-[rgba(143,233,255,0.35)] bg-[rgba(8,22,48,0.5)] px-4 py-2.5 font-mono text-sm text-[#e6f9ff]"
+                className="cursor-default rounded-full border border-[rgba(143,233,255,0.35)] bg-[rgba(8,22,48,0.5)] bg-[linear-gradient(#8fe9ff,#8fe9ff)] bg-bottom bg-no-repeat bg-[length:100%_0%] px-4 py-2.5 font-mono text-sm text-[#e6f9ff] transition-[background-size,color,border-color] duration-300 ease-out hover:border-[#8fe9ff] hover:bg-[length:100%_100%] hover:text-[#081630]"
               >
                 {s}
               </li>

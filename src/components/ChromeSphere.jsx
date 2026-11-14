@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { Environment, Lightformer } from '@react-three/drei'
+import { Environment, Lightformer, MeshDistortMaterial } from '@react-three/drei'
 import * as THREE from 'three'
 
 // Black chrome ball that grows spikes.
@@ -11,8 +11,10 @@ import * as THREE from 'three'
 
 const CORE = 1
 const SPIKES = 220
-const MAX_LEN = 1.1
-const MAX_REACH = CORE + MAX_LEN // used to size the camera so nothing gets cut off
+const MAX_LEN = 0.85
+const DISTORT = 0.55 // how far the liquid surface wobbles (≈ ±DISTORT² of the radius)
+const BASE = 0.72 // spikes grow from deep inside, so they still poke out where the surface bulges
+const MAX_REACH = CORE * 1.15 + MAX_LEN // used to size the camera so nothing gets cut off
 
 const UP = new THREE.Vector3(0, 1, 0)
 
@@ -121,9 +123,9 @@ function SpikeBall({ hovered, pulse }) {
       if (length < 0.01) {
         tmp.s.set(0, 0, 0) // fully retracted: hidden inside the core
       } else {
-        tmp.s.set(1, length + 0.1, 1) // +0.1 so the base stays buried in the surface
+        tmp.s.set(1, length + (1 - BASE) * CORE, 1) // the extra length is buried inside the blob
       }
-      tmp.p.copy(sp.normal).multiplyScalar(CORE - 0.1)
+      tmp.p.copy(sp.normal).multiplyScalar(CORE * BASE)
       tmp.m.compose(tmp.p, sp.q, tmp.s)
       mesh.current.setMatrixAt(i, tmp.m)
     }
@@ -134,8 +136,16 @@ function SpikeBall({ hovered, pulse }) {
     <group ref={tilt}>
       <group ref={spin}>
         <mesh>
-          <sphereGeometry args={[CORE, 96, 96]} />
-          <meshStandardMaterial color="#0f1012" metalness={1} roughness={0.1} envMapIntensity={1.7} />
+          {/* liquid chrome: a sphere whose surface is pushed around by animated noise */}
+          <icosahedronGeometry args={[CORE, 64]} />
+          <MeshDistortMaterial
+            color="#0f1012"
+            metalness={1}
+            roughness={0.1}
+            envMapIntensity={1.7}
+            distort={DISTORT}
+            speed={1.8}
+          />
         </mesh>
         <instancedMesh ref={mesh} args={[spikeGeometry, undefined, SPIKES]} frustumCulled={false}>
           <meshStandardMaterial color="#2a2d31" metalness={1} roughness={0.16} envMapIntensity={1.5} />

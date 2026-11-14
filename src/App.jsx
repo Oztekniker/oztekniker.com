@@ -10,13 +10,14 @@ import Statement from './components/Statement'
 import Work from './components/Work'
 import About from './components/About'
 import Contact from './components/Contact'
+import AskNoxis from './components/AskNoxis'
 
 // Build order (from the design notes):
 // 1. ✓ Intro: chain snakes in from the left, hooks the top of the site, yanks it up (Intro.jsx)
 // 2. ✓ 3D chrome chain through the whole page (ChainScene.jsx)
 // 3. ✓ Background colour transitions on scroll (Backdrop.jsx)
 // 4. Small details: headline reveals, chrome sweep + tilt on cards
-// 5. Ask NOXIS button (last)
+// 5. ✓ Ask NOXIS chat (AskNoxis.jsx + public/api/noxis.php)
 //
 // Elements marked data-intro-lift start pushed below the screen and get pulled up by the intro.
 
@@ -30,7 +31,6 @@ function ScrollClock() {
     if (!lenis) return
     const tick = (time) => lenis.raf(time * 1000)
     gsap.ticker.add(tick, false, true) // prioritized: runs before the chain renders
-    gsap.ticker.lagSmoothing(0)
     lenis.on('scroll', ScrollTrigger.update)
     return () => {
       gsap.ticker.remove(tick)
@@ -58,6 +58,7 @@ export default function App() {
         <About />
         <Contact />
       </main>
+      <AskNoxis />
     </ReactLenis>
   )
 }

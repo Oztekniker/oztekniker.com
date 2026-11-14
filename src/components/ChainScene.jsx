@@ -48,7 +48,7 @@ function pageBox(el) {
 }
 
 // Page-space route in pixels: [x, y, depth]. x/y are measured on the page, depth is in world units.
-function buildPoints() {
+function buildPoints(upp) {
   const vw = window.innerWidth
   const box = (sel) => {
     const el = document.querySelector(sel)
@@ -61,6 +61,9 @@ function buildPoints() {
   if (!hero || !work || !about || !anchor) return null
 
   const at = (s, k) => s.top + s.h * k
+  // how far above the slot the last link's centre sits, so only its lower curve goes through
+  // link centre sits so the outer bottom of the last link lands just below the slot's middle line
+  const hook = ((R + TUBE) * STRETCH - TUBE * 0.6) / upp
   // Long straight runs joined by wide bends
   return [
     [vw * 0.86, -240, 0], // starts in line with where the intro chain hooks on
@@ -73,7 +76,8 @@ function buildPoints() {
     [vw * 0.86, at(about, 0.8), -0.2], // straight down the right of About
     [vw * 0.6, anchor.top - 260, 0.2],
     [vw * 0.5, anchor.top - 80, 0],
-    [vw * 0.5, anchor.top + 4, 0], // locks onto the top of the form
+    // the last link hangs with its bottom curve through the badge slot
+    [vw * 0.5, anchor.top - hook, 0],
   ]
 }
 
@@ -126,12 +130,14 @@ function Chain() {
         const w = window.innerWidth
         const docH = document.documentElement.scrollHeight
         if (w === lastW && Math.abs(docH - lastDocH) < 2) return
-        const pts = buildPoints()
+        const upp = viewport.height / size.height // world units per pixel
+        // tell the page how big a link is on screen (the badge slot is sized from it)
+        document.documentElement.style.setProperty('--link-px', `${((2 * (R + TUBE)) / upp).toFixed(1)}px`)
+        const pts = buildPoints(upp)
         if (!pts) return
         lastW = w
         lastDocH = docH
 
-        const upp = viewport.height / size.height // world units per pixel
         const curve = new THREE.CatmullRomCurve3(
           pts.map(([x, y, z]) => new THREE.Vector3((x - w / 2) * upp, -y * upp, z)),
           false,
@@ -140,22 +146,18 @@ function Chain() {
         curve.arcLengthDivisions = 2000
         const length = curve.getLength()
 
-        // lookup table: positions and tangents every STEP along the curve
+        // lookup table: positions every STEP along the curve
         const n = Math.ceil(length / STEP) + 1
         const pos = new Float32Array(n * 3)
-        const tan = new Float32Array(n * 3)
         const p = new THREE.Vector3()
-        const t = new THREE.Vector3()
         for (let k = 0; k < n; k++) {
           const u = Math.min(1, (k * STEP) / length)
           curve.getPointAt(u, p).toArray(pos, k * 3)
-          curve.getTangentAt(u, t).toArray(tan, k * 3)
         }
 
-        let count = Math.ceil(length / PITCH) + 2
-        if (count % 2) count += 1
+        const count = Math.floor(length / PITCH) + 2
         tones.current = measureTones()
-        setPath({ length, count, upp, n, pos, tan })
+        setPath({ length, count, upp, n, pos, buf: new Float32Array(count * 3) })
       })
     }
     build()
@@ -184,7 +186,7 @@ function Chain() {
 
   useFrame((state, delta) => {
     if (!path || !mesh.current) return
-    const { length, count, upp, n, pos, tan } = path
+    const { length, count, upp, n, pos, buf } = path
     const H = size.height
 
     const y = window.scrollY
@@ -197,43 +199,47 @@ function Chain() {
     group.current.position.y = groupY
     const half = viewport.height / 2 + 0.8 // anything further than this from centre is off-screen
 
-    // links creep slowly toward the form as you scroll, like the chain is being pulled in
-    const slide = (y * upp * 0.15) % (2 * PITCH)
     const sway = THREE.MathUtils.clamp(s.velocity * 0.004, -0.25, 0.25)
     const time = state.clock.elapsedTime
 
+    // Pass 1: where every link sits. Links are counted back from the form, so the last one
+    // always lands exactly on the anchor. A little life is added sideways: the chain lags on
+    // fast scrolls and breathes at rest, fading to zero at both ends so they stay pinned.
     for (let i = 0; i < count; i++) {
-      const d = i * PITCH + slide - 2 * PITCH
-      if (d < 0 || d > length) {
-        mesh.current.setMatrixAt(i, HIDDEN)
-        continue
-      }
-      // blend between the two nearest lookup-table samples
+      const d = length - i * PITCH
+      if (d < 0) break
       const f = d / STEP
       const k = Math.min(n - 1, Math.floor(f))
       const k2 = Math.min(n - 1, k + 1)
       const a = f - k
-      tmp.p.set(
-        pos[k * 3] + (pos[k2 * 3] - pos[k * 3]) * a,
-        pos[k * 3 + 1] + (pos[k2 * 3 + 1] - pos[k * 3 + 1]) * a,
-        pos[k * 3 + 2] + (pos[k2 * 3 + 2] - pos[k * 3 + 2]) * a,
-      )
+      const pin = Math.min(1, d / 2, (length - d) / 2)
+      buf[i * 3] =
+        pos[k * 3] + (pos[k2 * 3] - pos[k * 3]) * a +
+        pin * (sway * Math.sin(d * 0.5) + Math.sin(time * 0.8 + d * 0.6) * 0.025)
+      buf[i * 3 + 1] = pos[k * 3 + 1] + (pos[k2 * 3 + 1] - pos[k * 3 + 1]) * a
+      buf[i * 3 + 2] = pos[k * 3 + 2] + (pos[k2 * 3 + 2] - pos[k * 3 + 2]) * a
+    }
+
+    // Pass 2: point each link at its neighbours (not along the undisturbed curve), so even when
+    // the chain sways or bends sharply into the form, every link lines up with the next one.
+    const last = Math.min(count - 1, Math.floor(length / PITCH))
+    for (let i = 0; i < count; i++) {
+      if (i > last) {
+        mesh.current.setMatrixAt(i, HIDDEN)
+        continue
+      }
+      tmp.p.fromArray(buf, i * 3)
       if (Math.abs(tmp.p.y + groupY) > half) {
         mesh.current.setMatrixAt(i, HIDDEN)
         continue
       }
+      const prev = Math.max(0, i - 1)
+      const next = Math.min(last, i + 1)
+      // direction up the chain (i grows away from the form). Keeping it mostly pointing up means
+      // the rotation from UP stays small and stable, so links never randomly flip edge-on.
       tmp.tan
-        .set(
-          tan[k * 3] + (tan[k2 * 3] - tan[k * 3]) * a,
-          tan[k * 3 + 1] + (tan[k2 * 3 + 1] - tan[k * 3 + 1]) * a,
-          tan[k * 3 + 2] + (tan[k2 * 3 + 2] - tan[k * 3 + 2]) * a,
-        )
+        .set(buf[next * 3] - buf[prev * 3], buf[next * 3 + 1] - buf[prev * 3 + 1], buf[next * 3 + 2] - buf[prev * 3 + 2])
         .normalize()
-
-      // a little life: lags on fast scrolls, breathes at rest; pinned at both ends
-      const pin = Math.min(1, d / 2, (length - d) / 2)
-      tmp.p.x += pin * (sway * Math.sin(d * 0.5) + Math.sin(time * 0.8 + d * 0.6) * 0.025)
-
       tmp.q.setFromUnitVectors(UP, tmp.tan)
       if (i % 2) tmp.q.multiply(QUARTER)
       tmp.m.compose(tmp.p, tmp.q, ONE)

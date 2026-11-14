@@ -6,12 +6,12 @@ import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import * as THREE from 'three'
 
-// Intro, ~2.2 seconds, no skip.
-// The site waits below the screen with only its top edge showing.
-// 0.00–1.10  a chrome chain snakes in from the left, curling across the screen,
-//            and its end drops onto the top right corner of the site
-// 1.10       it hooks on: clank — a shake and a glint
-// 1.25–1.70  the chain yanks the whole site up into place, hard, with a jolt on arrival
+// Intro, ~2.2 s on phones, ~2.6 s on desktop, no skip.
+// The site waits below the screen.
+// 0 → T      a chrome chain snakes in from the left (on desktop: chunkier, twisting, through a
+//            full loop) and its end drops onto the top right corner of the site
+// T          it hooks on: clank — a shake and a glint
+// T+0.15     the chain yanks the whole site up into place, hard, with a jolt on arrival
 // The hook point is exactly where the page chain begins (top right), so one hands over to the other.
 
 export const SITE_START = 1 // the site starts fully below the screen
@@ -25,8 +25,16 @@ const UP = new THREE.Vector3(0, 1, 0)
 const QUARTER = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI / 2)
 const ONE = new THREE.Vector3(1, 1, 1)
 
-function SnakeChain({ p }) {
+// Wide screens (desktop) get a bolder take: chunkier links, a full loop in the middle of the
+// screen and a rolling twist as the chain travels. Phones keep the simpler route, which already
+// fills a narrow screen. Links shrink back to the page chain's size as they reach the hook, so
+// the hand-over to the page chain still lines up.
+const isWide = () => window.innerWidth / window.innerHeight > 1.1
+const smooth = (x) => x * x * (3 - 2 * x)
+
+function SnakeChain({ p, onReady }) {
   const mesh = useRef()
+  const frames = useRef(0)
   const light = useRef()
   const { viewport, camera } = useThree()
 
@@ -36,56 +44,108 @@ function SnakeChain({ p }) {
     return g
   }, [])
 
-  // The route, laid out in screen pixels then converted to world units:
-  // in from off-screen left, two wide curls, then down onto the site's top right corner.
+  // The route, laid out in screen pixels then converted to world units.
   const path = useMemo(() => {
     const vw = window.innerWidth
     const vh = window.innerHeight
+    const wide = isWide()
     const upp = viewport.height / vh
     const toWorld = ([x, y, z]) => new THREE.Vector3((x - vw / 2) * upp, (vh / 2 - y) * upp, z)
     const hookX = vw * 0.86 // same x the page chain starts at, so the two meet in line
-    const curve = new THREE.CatmullRomCurve3(
-      [
+    const hook = [
+      [hookX, vh * 0.66, 0.2],
+      [hookX, vh * SITE_START + 4, 0], // the hook: top edge of the site, just below the screen
+    ]
+
+    let points
+    if (wide) {
+      // in from the left, a full loop (the chain crosses itself, front then back), out to the right
+      const cx = vw * 0.42
+      const cy = vh * 0.36
+      const r = vh * 0.19
+      points = [
+        [-vw * 0.12, vh * 0.58, 0],
+        [vw * 0.1, vh * 0.5, 0.4],
+        [cx - 1.1 * r, cy + r, 0.7],
+        [cx + 0.2 * r, cy + r, 0.7], // bottom of the loop, first pass (in front)
+        [cx + r, cy, 0.3],
+        [cx, cy - r, -0.2], // top of the loop
+        [cx - r, cy, -0.6],
+        [cx - 0.15 * r, cy + 1.05 * r, -0.7], // bottom again, second pass (behind)
+        [cx + 1.6 * r, cy + 0.85 * r, -0.2],
+        [vw * 0.72, vh * 0.28, 0.4],
+        ...hook,
+      ]
+    } else {
+      points = [
         [-vw * 0.12, vh * 0.12, 0],
         [vw * 0.12, vh * 0.42, 0.6],
         [vw * 0.34, vh * 0.2, -0.4],
         [vw * 0.55, vh * 0.48, 0.5],
         [vw * 0.74, vh * 0.3, -0.3],
-        [hookX, vh * 0.66, 0.2],
-        [hookX, vh * SITE_START + 4, 0], // the hook: top edge of the site, just below the screen
-      ].map(toWorld),
-      false,
-      'centripetal',
-    )
+        ...hook,
+      ]
+    }
+
+    const curve = new THREE.CatmullRomCurve3(points.map(toWorld), false, 'centripetal')
+    curve.arcLengthDivisions = 1000
     const length = curve.getLength()
-    const count = Math.ceil(length / PITCH) + 1
-    return { curve, length, count: count % 2 ? count + 1 : count, upp }
+    return {
+      curve,
+      length,
+      count: Math.ceil(length / PITCH) + 2, // upper bound; bigger links need fewer
+      upp,
+      big: wide ? 1.45 : 1, // link size at the start of the route
+      twist: wide ? 1 : 0,
+    }
   }, [viewport.height])
 
   const tmp = useMemo(
-    () => ({ p: new THREE.Vector3(), tan: new THREE.Vector3(), q: new THREE.Quaternion(), m: new THREE.Matrix4(), hidden: new THREE.Matrix4().makeScale(0, 0, 0) }),
+    () => ({
+      p: new THREE.Vector3(),
+      tan: new THREE.Vector3(),
+      q: new THREE.Quaternion(),
+      roll: new THREE.Quaternion(),
+      s: new THREE.Vector3(),
+      m: new THREE.Matrix4(),
+      hidden: new THREE.Matrix4().makeScale(0, 0, 0),
+    }),
     [],
   )
 
-  useFrame(() => {
+  useFrame((state) => {
     if (!mesh.current) return
-    const { curve, length, count, upp } = path
+    // Start the timeline only once the chain has actually drawn a few frames. The first frames
+    // compile shaders and can stall for a moment; starting earlier made the chain's entrance
+    // get skipped on some machines.
+    if (frames.current < 3 && ++frames.current === 3) onReady()
+    const { curve, length, count, upp, big, twist } = path
     const head = p.head * length // how far along the route the leading link has travelled
     const lift = -p.siteY * upp + window.innerHeight * SITE_START * upp // follows the site as it is yanked up
+    const time = state.clock.elapsedTime
 
+    // size along the route: big for most of it, easing back to page size over the last stretch
+    const sizeAt = (s) => 1 + (big - 1) * (1 - smooth(Math.min(1, Math.max(0, (s / length - 0.62) / 0.3))))
+
+    // links trail behind the head like a snake; spacing follows each link's size
+    let s = head
     for (let i = 0; i < count; i++) {
-      const s = head - i * PITCH // links trail behind the head like a snake
       if (s < 0) {
         mesh.current.setMatrixAt(i, tmp.hidden)
         continue
       }
+      const size = sizeAt(s)
       const t = Math.min(1, s / length)
       curve.getPointAt(t, tmp.p)
       curve.getTangentAt(t, tmp.tan)
       tmp.p.y += lift
       tmp.q.setFromUnitVectors(UP, tmp.tan)
+      // rolling twist around the chain's own axis (dies out near the hook)
+      const roll = twist * (size - 1) / (big - 1 || 1) * (s * 1.4 - time * 5)
+      if (roll) tmp.q.multiply(tmp.roll.setFromAxisAngle(UP, roll))
       if (i % 2) tmp.q.multiply(QUARTER)
-      mesh.current.setMatrixAt(i, tmp.m.compose(tmp.p, tmp.q, ONE))
+      mesh.current.setMatrixAt(i, tmp.m.compose(tmp.p, tmp.q, tmp.s.setScalar(size)))
+      s -= PITCH * size
     }
     mesh.current.instanceMatrix.needsUpdate = true
 
@@ -184,14 +244,16 @@ export default function Intro() {
         setDone(true)
       },
     })
-    tl.to(p, { head: 1, duration: 1.1, ease: 'power2.out' }, 0)
+    // the loop on wide screens is a longer route, so give it a little more time
+    const T = isWide() ? 1.5 : 1.1
+    tl.to(p, { head: 1, duration: T, ease: 'power2.out' }, 0)
     // hook on
-    tl.to(p, { keyframes: { shake: [-0.6, 0.4, 0] }, duration: 0.12, ease: 'none' }, 1.1)
-    tl.to(p, { glint: 1, duration: 0.05, yoyo: true, repeat: 1 }, 1.1)
+    tl.to(p, { keyframes: { shake: [-0.6, 0.4, 0] }, duration: 0.12, ease: 'none' }, T)
+    tl.to(p, { glint: 1, duration: 0.05, yoyo: true, repeat: 1 }, T)
     // yank
-    tl.to(p, { siteY: 0, duration: 0.45, ease: 'power4.in' }, 1.25)
-    tl.to(p, { keyframes: { shake: [-1, 0.8, -0.5, 0.3, 0] }, duration: 0.25, ease: 'none' }, 1.7)
-    tl.to(p, { keyframes: { siteY: [-22, 6, 0] }, duration: 0.3, ease: 'power2.out' }, 1.7)
+    tl.to(p, { siteY: 0, duration: 0.45, ease: 'power4.in' }, T + 0.15)
+    tl.to(p, { keyframes: { shake: [-1, 0.8, -0.5, 0.3, 0] }, duration: 0.25, ease: 'none' }, T + 0.6)
+    tl.to(p, { keyframes: { siteY: [-22, 6, 0] }, duration: 0.3, ease: 'power2.out' }, T + 0.6)
     return () => tl.kill()
   }, [ready, done, p])
 
@@ -206,7 +268,6 @@ export default function Intro() {
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
         style={{ pointerEvents: 'none' }}
-        onCreated={() => requestAnimationFrame(() => setReady(true))}
       >
         <ambientLight intensity={0.2} />
         <directionalLight position={[3, 5, 6]} intensity={1.2} />
@@ -216,7 +277,7 @@ export default function Intro() {
           <Lightformer form="rect" intensity={2} position={[6, 0, 0]} rotation-y={-Math.PI / 2} scale={[12, 1.5, 1]} />
           <Lightformer form="ring" intensity={3} position={[0, 0, 6]} scale={3} />
         </Environment>
-        <SnakeChain p={p} />
+        <SnakeChain p={p} onReady={() => setReady(true)} />
       </Canvas>
       </div>
     </>
