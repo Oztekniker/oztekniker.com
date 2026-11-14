@@ -38,11 +38,15 @@ function currentTone() {
 // Page-space route in pixels: [x, y, depth]. x/y are measured on the page, depth is in world units.
 function buildPoints() {
   const vw = window.innerWidth
+  // Layout position on the page, ignoring CSS transforms. The intro slides the whole site up
+  // with a transform; measuring with getBoundingClientRect would bake that offset into the route
+  // and the chain would jump when the intro ends.
   const box = (sel) => {
     const el = document.querySelector(sel)
     if (!el) return null
-    const r = el.getBoundingClientRect()
-    return { top: r.top + window.scrollY, h: r.height }
+    let top = 0
+    for (let n = el; n; n = n.offsetParent) top += n.offsetTop
+    return { top, h: el.offsetHeight }
   }
   const hero = box('#top')
   const work = box('#work')
@@ -51,7 +55,6 @@ function buildPoints() {
   if (!hero || !work || !about || !anchor) return null
 
   const at = (s, k) => s.top + s.h * k
-  // Long straight runs joined by wide bends
   // Long straight runs joined by wide bends
   return [
     [vw * 0.86, -240, 0], // starts in line with where the intro chain hooks on

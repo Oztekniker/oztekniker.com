@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Environment, Lightformer } from '@react-three/drei'
 import { useLenis } from 'lenis/react'
 import gsap from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import * as THREE from 'three'
 
 // Intro, ~2.2 seconds, no skip.
@@ -179,7 +180,7 @@ export default function Intro() {
         els.forEach((el) => (el.style.transform = '')) // back to normal
         document.documentElement.classList.remove('intro-pending')
         window.dispatchEvent(new Event('intro-done')) // hero headline starts its reveal
-        window.dispatchEvent(new Event('resize')) // let the page chain and scroll triggers re-measure
+        ScrollTrigger.refresh() // scroll triggers were measured while the site was still shifted down
         setDone(true)
       },
     })
