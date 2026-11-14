@@ -1,5 +1,6 @@
 import Tilt from 'react-parallax-tilt'
 import Reveal from './Reveal'
+import ProjectMedia from './ProjectMedia'
 import { projects } from '../data/projects'
 
 export default function Work() {
@@ -36,9 +37,7 @@ export default function Work() {
               glareBorderRadius="20px"
             >
               <article className="chrome-sweep group flex h-full flex-col gap-3.5 rounded-[20px] border border-white/15 bg-[rgba(20,8,8,0.72)] p-6 transition-colors duration-300 hover:border-white/40">
-                <div className="flex aspect-video items-center justify-center rounded-[14px] bg-[#1f0e0e] font-mono text-[13px] text-[#d9a9a9]">
-                  [ {p.image} ]
-                </div>
+                <ProjectMedia project={p} />
                 <p className="font-mono text-[13px] text-[#ff9b9b]">{p.tag}</p>
                 <h3 className="font-display text-[28px] text-white">{p.title}</h3>
                 <p className="leading-relaxed text-[#d8c8c8]">{p.description}</p>
