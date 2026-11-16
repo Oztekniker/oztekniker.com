@@ -10,14 +10,14 @@ import Statement from './components/Statement'
 import Work from './components/Work'
 import About from './components/About'
 import Contact from './components/Contact'
-import AskNoxis from './components/AskNoxis'
+import AskRose from './components/AskRose'
 
 // Build order (from the design notes):
 // 1. ✓ Intro: chain snakes in from the left, hooks the top of the site, yanks it up (Intro.jsx)
 // 2. ✓ 3D chrome chain through the whole page (ChainScene.jsx)
 // 3. ✓ Background colour transitions on scroll (Backdrop.jsx)
 // 4. Small details: headline reveals, chrome sweep + tilt on cards
-// 5. ✓ Ask NOXIS chat (AskNoxis.jsx + public/api/noxis.php)
+// 5. ✓ Ask Rose chat (AskRose.jsx + public/api/rose.php)
 //
 // Elements marked data-intro-lift start pushed below the screen and get pulled up by the intro.
 
@@ -58,7 +58,7 @@ export default function App() {
         <About />
         <Contact />
       </main>
-      <AskNoxis />
+      <AskRose />
     </ReactLenis>
   )
 }

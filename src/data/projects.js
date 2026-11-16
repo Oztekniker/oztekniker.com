@@ -10,7 +10,7 @@ export const projects = [
     video: '/projects/noxis-demo.mp4',
     poster: '/projects/noxis-poster.jpg',
     description:
-      'A voice AI assistant on the Claude API, with Whisper speech-to-text, a wake word and a formal, warm persona.',
+      'The first version of Rose: a voice AI assistant on the Claude API, with Whisper speech-to-text, a wake word, a formal butler persona and a gold-on-black interface.',
   },
   {
     title: 'DietTracker',
@@ -30,12 +30,12 @@ export const projects = [
       'My first portfolio, hand-written in React, Tailwind and Three.js, with a 3D Medusa centrepiece and a working contact form.',
   },
   {
-    title: 'Prometheus',
-    tag: 'AI · Voice',
-    image: 'Prometheus demo',
-    poster: '/projects/prometheus.jpg',
+    title: 'Rose',
+    tag: 'AI · Voice · 2026',
+    image: 'Rose',
+    poster: '/projects/rose.jpg',
     description:
-      'The assistant before NOXIS: a HAL 9000-inspired voice AI for macOS, on the Claude API and Whisper, with a red HUD for news, music and live markets.',
+      'My AI assistant for macOS, rebuilt from NOXIS. Say "Rose" and she listens, thinks with the Claude API and talks back in her own voice, handling the calendar, reminders, music, files, web searches and more.',
   },
 ]
 

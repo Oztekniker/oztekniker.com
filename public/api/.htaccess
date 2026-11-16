@@ -1,4 +1,4 @@
 # Only the PHP endpoint is public; the prompt file is read by PHP, not served
-<Files "noxis-prompt.txt">
+<Files "rose-prompt.txt">
   Require all denied
 </Files>
